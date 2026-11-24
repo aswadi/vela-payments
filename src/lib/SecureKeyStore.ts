@@ -13,8 +13,14 @@
  */
 
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
-import type { SecureKey, SecureStoreSetOptions } from './SecureKeyStore.types';
+import type {
+  SecureKey,
+  SecureStorageCapabilities,
+  SecureStoragePlatform,
+  SecureStoreSetOptions,
+} from './SecureKeyStore.types';
 import { SECURE_KEYS } from './SecureKeyStore.types';
 
 // ─── Sensitivity tiers ────────────────────────────────────────────────────────
@@ -27,6 +33,13 @@ const AUTH_REQUIRED_KEYS: ReadonlySet<SecureKey> = new Set([
   SECURE_KEYS.WALLET_PUBLIC_KEY,
   SECURE_KEYS.WALLET_STELLAR_SECRET_KEY,
 ]);
+
+function normalizePlatform(os?: string): SecureStoragePlatform {
+  if (os === 'ios' || os === 'android' || os === 'web') {
+    return os;
+  }
+  return 'unknown';
+}
 
 function buildOptions(
   key: SecureKey,
@@ -76,6 +89,74 @@ export const SecureKeyStore = {
    * On web or unsupported environments this may return false.
    */
   isAvailable(): boolean {
-    return SecureStore.isAvailableAsync !== undefined;
+    const platform = normalizePlatform(Platform?.OS);
+    if (platform === 'web') {
+      return false;
+    }
+    return typeof SecureStore.isAvailableAsync === 'function';
+  },
+
+  /**
+   * Performs an asynchronous platform-specific capability check for secure storage.
+   * Verifies runtime availability via expo-secure-store without leaking sensitive details.
+   */
+  async getStorageCapabilities(platformOverride?: string): Promise<SecureStorageCapabilities> {
+    const platform = normalizePlatform(platformOverride ?? Platform?.OS);
+
+    if (platform === 'web') {
+      return {
+        platform,
+        available: false,
+        supportsKeychainService: false,
+        supportsBiometricAuthentication: false,
+        reason: 'web_unsupported',
+      };
+    }
+
+    if (typeof SecureStore.isAvailableAsync !== 'function') {
+      return {
+        platform,
+        available: false,
+        supportsKeychainService: false,
+        supportsBiometricAuthentication: false,
+        reason: 'native_module_missing',
+      };
+    }
+
+    try {
+      const isAvailable = await SecureStore.isAvailableAsync();
+      if (!isAvailable) {
+        return {
+          platform,
+          available: false,
+          supportsKeychainService: false,
+          supportsBiometricAuthentication: false,
+          reason: 'runtime_unavailable',
+        };
+      }
+
+      const isNativeMobile = platform === 'ios' || platform === 'android';
+      const canUseBiometricAuth =
+        isNativeMobile &&
+        (typeof SecureStore.canUseBiometricAuthentication === 'function'
+          ? Boolean(SecureStore.canUseBiometricAuthentication())
+          : true);
+
+      return {
+        platform,
+        available: true,
+        supportsKeychainService: isNativeMobile,
+        supportsBiometricAuthentication: canUseBiometricAuth,
+        reason: 'supported',
+      };
+    } catch {
+      return {
+        platform,
+        available: false,
+        supportsKeychainService: false,
+        supportsBiometricAuthentication: false,
+        reason: 'probe_failed',
+      };
+    }
   },
 };

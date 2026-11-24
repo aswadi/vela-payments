@@ -41,3 +41,22 @@ export interface SecureStoreSetOptions {
    */
   authenticationPrompt?: string;
 }
+
+// ─── Platform Storage Capabilities ────────────────────────────────────────────
+
+export type SecureStoragePlatform = 'ios' | 'android' | 'web' | 'unknown';
+
+export type SecureStorageCapabilityReason =
+  | 'supported'
+  | 'web_unsupported'
+  | 'native_module_missing'
+  | 'runtime_unavailable'
+  | 'probe_failed';
+
+export interface SecureStorageCapabilities {
+  platform: SecureStoragePlatform;
+  available: boolean;
+  supportsKeychainService: boolean;
+  supportsBiometricAuthentication: boolean;
+  reason: SecureStorageCapabilityReason;
+}
